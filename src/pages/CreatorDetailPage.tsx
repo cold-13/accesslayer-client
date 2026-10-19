@@ -97,6 +97,13 @@ import {
 	type ActiveTradeCooldown,
 } from '@/utils/tradeCooldown.utils';
 import TradeCooldownButton from '@/components/common/TradeCooldownButton';
+import {
+	useKeyLockup,
+	useRemainingUnlockSeconds,
+	isKeyLockupActive,
+} from '@/hooks/useKeyLockup';
+import { formatUnlockCountdown } from '@/utils/lockupCountdown.utils';
+import KeyLockupBadge from '@/components/common/KeyLockupBadge';
 import { useAccount } from 'wagmi';
 
 function CreatorDetailPageContent() {
@@ -178,6 +185,14 @@ function CreatorDetailPageContent() {
 
 	const userPosition = holdings.find(h => h.creatorId === (id || ''));
 	const holdingsCount = userPosition?.quantity ?? 0;
+
+	// #1163 — wallet-scoped lock-up status: while active, selling is
+	// disabled with a LockupActive reason and a live unlock countdown.
+	const { data: keyLockup } = useKeyLockup(id || '', userAddress);
+	const lockupRemainingSeconds = useRemainingUnlockSeconds(
+		keyLockup?.unlockAt
+	);
+	const isLockupActive = isKeyLockupActive(keyLockup, lockupRemainingSeconds);
 
 	const nextBuyAllowedAt =
 		userPosition?.nextBuyAllowedAt ?? creator?.nextBuyAllowedAt ?? null;
@@ -797,7 +812,22 @@ function CreatorDetailPageContent() {
 						)}
 
 						{holdingsCount > 0 &&
-							(isFloorActive ? (
+							(isLockupActive ? (
+								<UnavailableAction
+									disabled
+									reason={`LockupActive: Selling is disabled while this position is under lock-up. Unlocks in ${formatUnlockCountdown(lockupRemainingSeconds)}.`}
+								>
+									<Button
+										type="button"
+										disabled
+										data-testid="key-detail-sell-button"
+										variant="outline"
+										className="min-h-11 w-full rounded-xl font-bold sm:h-10 sm:min-h-0 sm:w-auto"
+									>
+										Sell Key (Locked)
+									</Button>
+								</UnavailableAction>
+							) : isFloorActive ? (
 								<UnavailableAction
 									disabled
 									reason="PriceFloorActive: Price floor is active. Selling is disabled while current price is at or below the floor price."
@@ -826,6 +856,13 @@ function CreatorDetailPageContent() {
 									Sell Key
 								</Button>
 							))}
+
+						{holdingsCount > 0 && isLockupActive && (
+							<KeyLockupBadge
+								unlockAt={keyLockup?.unlockAt}
+								className="shrink-0"
+							/>
+						)}
 					</div>
 				</div>
 
